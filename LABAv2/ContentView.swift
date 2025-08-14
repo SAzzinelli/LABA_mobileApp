@@ -2926,6 +2926,16 @@ struct HomeView: View {
         return v.range(of: #"^\s*\d+\s*/\s*\d+"#, options: .regularExpression) != nil
     }
 
+    // Helpers per distinguere Attività integrative e Tesi
+    private func isAttivitaIntegrativa(_ e: Esame) -> Bool {
+        // Esempio nei dati: "ATTIVITÀ A SCELTA (Workshop/Seminari/Stage)"
+        return e.corso.lowercased().contains("attivit")
+    }
+
+    private func isTesiFinale(_ e: Esame) -> Bool {
+        return e.corso.lowercased().contains("tesi")
+    }
+
     /// Conteggio esami totali: conta tutti i corsi che non sono Attività/Tesi,
     /// indipendentemente dal fatto che abbiano già un voto.
     private func isCountableForTotals(_ e: Esame) -> Bool {
@@ -2946,22 +2956,83 @@ struct HomeView: View {
     private var totalExamsCount: Int { validExams.count }
     private var missingExamsCount: Int { max(totalExamsCount - passedExamsCount, 0) }
 
+    /// Stato: utente laureato
+    private var isGraduated: Bool {
+        (vm.status ?? "").lowercased().contains("laureat")
+    }
+
     /// CFA: il TARGET è la somma di TUTTI i CFA (esami, idoneità, attività, tesi)
     private var cfaTarget: Int {
         vm.esami.reduce(0) { $0 + (Int($1.cfa ?? "") ?? 0) }
     }
-    /// CFA guadagnati: somma CFA di TUTTE le voci completate (voto non vuoto oppure data sostenimento presente)
+    /// CFA guadagnati secondo regole LABA (esami + max 10 Attività integrative + Tesi)
     private var cfaEarned: Int {
-        vm.esami.reduce(0) { acc, e in
-            let completed = !(e.voto ?? "").isEmpty || (e.sostenutoIl != nil)
-            guard completed, let c = Int(e.cfa ?? "") else { return acc }
+        // Completamento = ha un voto (numerico o idoneità) oppure una data di sostenimento
+        func isCompleted(_ e: Esame) -> Bool { !(e.voto ?? "").isEmpty || (e.sostenutoIl != nil) }
+
+        // 1) Esami (escludi Attività e Tesi)
+        let examsEarned = vm.esami.reduce(0) { acc, e in
+            guard !isAttivitaIntegrativa(e), !isTesiFinale(e) else { return acc }
+            guard isCompleted(e), let c = Int(e.cfa ?? "") else { return acc }
             return acc + c
         }
+
+        // 2) Attività integrative (Seminari/Workshop/Tirocini) → max 10 CFA totali
+        let attivita = vm.esami.filter { isAttivitaIntegrativa($0) }
+        let declaredActivitiesCFA = attivita.compactMap { Int($0.cfa ?? "") }.reduce(0, +) // di solito 10
+        let anyActivityCompleted = attivita.contains { isCompleted($0) }
+        let activitiesEarned: Int = {
+            if isGraduated { return 10 } // laureato: consideriamo acquisiti i 10 CFA totali di Attività
+            return anyActivityCompleted ? min(10, declaredActivitiesCFA) : 0
+        }()
+
+        // 3) Tesi finale
+        let thesis = vm.esami.filter { isTesiFinale($0) }
+        let thesisCFA = thesis.compactMap { Int($0.cfa ?? "") }.first ?? 0
+        let thesisCompleted = thesis.contains { isCompleted($0) }
+        let thesisEarned = (isGraduated || thesisCompleted) ? thesisCFA : 0
+
+        return examsEarned + activitiesEarned + thesisEarned
     }
     private var cfaPercent: Double {
         let tot = cfaTarget
         guard tot > 0 else { return 0 }
         return Double(cfaEarned) / Double(tot)
+    }
+
+    // Schiarisce leggermente il colore d'accento per la pill in Hero
+    private func lighterAccent(by delta: CGFloat = 0.15) -> Color {
+#if canImport(UIKit)
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        let ui = UIColor(.labaAccent)
+        _ = ui.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        // aumenta la luminosità e riduce di poco la saturazione per migliorare il contrasto del testo bianco
+        let nb = min(1.0, b + delta)
+        let ns = max(0.0, s - (delta * 0.35))
+        let out = UIColor(hue: h, saturation: ns, brightness: nb, alpha: a)
+        return Color(out)
+#else
+        return Color.labaAccent.opacity(0.90)
+#endif
+    }
+
+    // Calcola un outline accent che contrasta con il fill e con l'hero
+    private func outlineAccent(from base: Color) -> Color {
+#if canImport(UIKit)
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        let ui = UIColor(base)
+        // se non riesco a leggere HSB, ripiego su labaAccent più scuro
+        guard ui.getHue(&h, saturation: &s, brightness: &b, alpha: &a) else {
+            return Color.labaAccent.opacity(0.95)
+        }
+        // Outline più saturo e più scuro per staccare sia dal fill che dal gradient hero
+        let ns = min(1.0, s + 0.18)
+        let nb = max(0.0, b - 0.15)
+        let out = UIColor(hue: h, saturation: ns, brightness: nb, alpha: a)
+        return Color(hue: Double(h), saturation: Double(ns), brightness: Double(nb))
+#else
+        return Color.labaAccent.opacity(0.95)
+#endif
     }
 
     @ViewBuilder
@@ -2972,10 +3043,10 @@ struct HomeView: View {
                 Pill(text: vm.graduatedWord(), kind: .status)
                     .foregroundStyle(Color.white) // testo bianco nella pillola
                     .background(
-                        Capsule().fill(Color.labaAccent) // fondo pieno accent
+                        Capsule().fill(lighterAccent()) // fondo accent leggermente più chiaro
                     )
                     .overlay(
-                        Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1) // outline leggero
+                        Capsule().stroke(outlineAccent(from: lighterAccent()), lineWidth: 1) // outline accent
                     )
                     .compositingGroup()
 
@@ -2990,10 +3061,10 @@ struct HomeView: View {
                 Pill(text: italianOrdinalYear(year), kind: .year)
                     .foregroundStyle(Color.white) // testo bianco nella pillola
                     .background(
-                        Capsule().fill(Color.labaAccent) // fondo pieno accent
+                        Capsule().fill(lighterAccent()) // fondo accent leggermente più chiaro
                     )
                     .overlay(
-                        Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1) // outline leggero
+                        Capsule().stroke(outlineAccent(from: lighterAccent()), lineWidth: 1) // outline accent
                     )
                     .compositingGroup()
 
@@ -3068,7 +3139,7 @@ struct HomeView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding()
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(.systemBackground)))
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemGroupedBackground)))
                     .shadow(color: Color.labaAccent.opacity(0.08), radius: 6, x: 0, y: 2)
                     .padding(.horizontal)
 
@@ -3085,7 +3156,7 @@ struct HomeView: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(.systemBackground)))
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemGroupedBackground)))
                     .shadow(color: Color.labaAccent.opacity(0.08), radius: 6, x: 0, y: 2)
                     .padding(.horizontal)
 
@@ -3102,13 +3173,13 @@ struct HomeView: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(.systemBackground)))
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemGroupedBackground)))
                     .shadow(color: Color.labaAccent.opacity(0.08), radius: 6, x: 0, y: 2)
                     .padding(.horizontal)
 
                     // PER TE
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Per te").font(.headline)
+                        Text("Per te (in costruzione)").font(.headline)
                         VStack(spacing: 12) {
                             perTeRow(icon: "🧮", text: "Calcola la media")
                             perTeRow(icon: "📷", text: "Prenota strumentazione")
@@ -3124,6 +3195,7 @@ struct HomeView: View {
                 }
                 .padding(.top, 6)
             }
+            .background(Color(uiColor: .systemGroupedBackground))
         }
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationTitle(" ")
@@ -3175,7 +3247,7 @@ struct HomeView: View {
 
         ZStack {
             RoundedRectangle(cornerRadius: 14)
-                .fill(completedFocus ? Color.labaAccent : Color(.systemBackground))
+                .fill(completedFocus ? Color.labaAccent : Color(uiColor: .secondarySystemGroupedBackground))
                 .overlay(
                     Group {
                         if !completedFocus {
@@ -3193,28 +3265,27 @@ struct HomeView: View {
             // Content
             VStack(spacing: 6) {
                 if completedFocus {
-                    RibbonCHeckIcon(size: 28, tint: .white)
+                    RibbonCheckIcon(size: 28, tint: .white)
                         .shadow(color: .black.opacity(0.18), radius: 1.5, x: 0, y: 1)
-                    Text("Tutti sostenuti!")
+                    Text("Hai sostenuto tutti gli esami!")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.95))
                 } else {
-                    Text(value)
-                        .font(.title2).bold()
-                        .foregroundColor(.primary)
                     Text(title)
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    Text(value)
+                        .font(.title2).bold()
+                        .foregroundColor(.primary)
                 }
             }
-            .padding()
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, minHeight: 96, alignment: .center)
+            .padding(6)
+            .padding(.vertical, 3)
         }
-        .overlay(
-            Group {
-                // Glow leggero esterno SOLO per la card "Esami mancanti" quando completata
-                StaticGlow(active: completedFocus, color: .labaAccent, corner: 14, opacity: 0.18, radius: 8)
-                AIGlow(active: completedFocus, color: .labaAccent, corner: 14)
-            }
+        .background(
+            TightGlow(active: completedFocus, color: .labaAccent, corner: 14)
         )
     }
     
@@ -3304,32 +3375,38 @@ struct HomeView: View {
         }
     }
 
-    // Ribbon/premio con checkmark (come nella versione originale)
-    fileprivate struct RibbonCHeckIcon: View {
+    // Ribbon/premio con checkmark (sempre disponibile, iOS 15+)
+    fileprivate struct RibbonCheckIcon: View {
         var size: CGFloat = 28
         var tint: Color = .labaAccent
         var body: some View {
-            Group {
-                if #available(iOS 16.0, *) {
-                    Image(systemName: "ribbon.badge.checkmark")
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(tint)
-                        .font(.system(size: size, weight: .semibold))
-                } else {
-                    ZStack {
-                        Image(systemName: "ribbon.fill")
-                            .renderingMode(.template)
-                            .foregroundColor(tint)
-                            .font(.system(size: size, weight: .semibold))
-                        Image(systemName: "checkmark")
-                            .renderingMode(.template)
-                            .foregroundColor(.white)
-                            .font(.system(size: size * 0.38, weight: .bold))
-                            .offset(y: size * 0.10)
-                    }
-                }
+            ZStack {
+                Image(systemName: "rosette")
+                    .font(.system(size: size))
+                    .foregroundColor(tint)
             }
             .accessibilityLabel("Tutti gli esami sono stati sostenuti")
+        }
+    }
+    // Glow molto aderente ai bordi (tighter edge glow)
+    fileprivate struct TightGlow: View {
+        let active: Bool
+        let color: Color
+        let corner: CGFloat
+        var body: some View {
+            ZStack {
+                // Anello molto vicino al bordo esterno
+                RoundedRectangle(cornerRadius: corner)
+                    .stroke(color.opacity(active ? 0.60 : 0.0), lineWidth: 5)
+                    .blur(radius: active ? 4 : 0)
+                    .padding(-3) // spinge il glow appena fuori
+                    .allowsHitTesting(false)
+                // Bordo interno luminoso sottile
+                RoundedRectangle(cornerRadius: corner)
+                    .stroke(color.opacity(active ? 0.35 : 0.0), lineWidth: 2)
+                    .blur(radius: active ? 1.2 : 0)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
@@ -3565,3 +3642,4 @@ struct ContentView: View {
 
 struct ContentView_Previews: PreviewProvider { static var previews: some View { ContentView() } }
  
+
