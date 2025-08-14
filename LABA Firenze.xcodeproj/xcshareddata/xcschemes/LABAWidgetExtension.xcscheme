@@ -19,7 +19,7 @@
                BlueprintIdentifier = "FC9574842E4C170F00068076"
                BuildableName = "LABAWidgetExtension.appex"
                BlueprintName = "LABAWidgetExtension"
-               ReferencedContainer = "container:LABAv2.xcodeproj">
+               ReferencedContainer = "container:LABA Firenze.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
@@ -31,9 +31,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "FCF19F282E4B94EA004F660C"
-               BuildableName = "LABAv2.app"
-               BlueprintName = "LABAv2"
-               ReferencedContainer = "container:LABAv2.xcodeproj">
+               BuildableName = "LABA Firenze.app"
+               BlueprintName = "LABA Firenze"
+               ReferencedContainer = "container:LABA Firenze.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -65,16 +65,16 @@
             BlueprintIdentifier = "FC9574842E4C170F00068076"
             BuildableName = "LABAWidgetExtension.appex"
             BlueprintName = "LABAWidgetExtension"
-            ReferencedContainer = "container:LABAv2.xcodeproj">
+            ReferencedContainer = "container:LABA Firenze.xcodeproj">
          </BuildableReference>
       </RemoteRunnable>
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "FCF19F282E4B94EA004F660C"
-            BuildableName = "LABAv2.app"
-            BlueprintName = "LABAv2"
-            ReferencedContainer = "container:LABAv2.xcodeproj">
+            BuildableName = "LABA Firenze.app"
+            BlueprintName = "LABA Firenze"
+            ReferencedContainer = "container:LABA Firenze.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <EnvironmentVariables>
@@ -86,6 +86,36 @@
          <EnvironmentVariable
             key = "_XCWidgetDefaultView"
             value = "timeline"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "_XCWidgetFamily"
+            value = "systemMedium"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "_XCWidgetKind"
+            value = "LABAWidget"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "_XCWidgetKind"
+            value = "LABAExamsWidgetSmall"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "_XCWidgetKind"
+            value = "LABAWidget"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "_XCWidgetFamily"
+            value = "systemMedium"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "_XCWidgetFamily"
+            value = "systemMedium"
             isEnabled = "YES">
          </EnvironmentVariable>
          <EnvironmentVariable
@@ -108,9 +138,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "FCF19F282E4B94EA004F660C"
-            BuildableName = "LABAv2.app"
-            BlueprintName = "LABAv2"
-            ReferencedContainer = "container:LABAv2.xcodeproj">
+            BuildableName = "LABA Firenze.app"
+            BlueprintName = "LABA Firenze"
+            ReferencedContainer = "container:LABA Firenze.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

@@ -41,7 +41,7 @@
 		FC9574672E4C14D100068076 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		FC9574852E4C170F00068076 /* LABAWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LABAWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FC9574A02E4C173400068076 /* LABAWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LABAWidgetExtension.entitlements; sourceTree = "<group>"; };
-		FCF19F292E4B94EA004F660C /* LABAv2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LABAv2.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FCF19F292E4B94EA004F660C /* LABA Firenze.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "LABA Firenze.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -113,7 +113,7 @@
 		FCF19F2A2E4B94EA004F660C /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				FCF19F292E4B94EA004F660C /* LABAv2.app */,
+				FCF19F292E4B94EA004F660C /* LABA Firenze.app */,
 				FC9574852E4C170F00068076 /* LABAWidgetExtension.appex */,
 			);
 			name = Products;
@@ -144,9 +144,9 @@
 			productReference = FC9574852E4C170F00068076 /* LABAWidgetExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		FCF19F282E4B94EA004F660C /* LABAv2 */ = {
+		FCF19F282E4B94EA004F660C /* LABA Firenze */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = FCF19F342E4B94EB004F660C /* Build configuration list for PBXNativeTarget "LABAv2" */;
+			buildConfigurationList = FCF19F342E4B94EB004F660C /* Build configuration list for PBXNativeTarget "LABA Firenze" */;
 			buildPhases = (
 				FCF19F252E4B94EA004F660C /* Sources */,
 				FCF19F262E4B94EA004F660C /* Frameworks */,
@@ -161,11 +161,11 @@
 			fileSystemSynchronizedGroups = (
 				FCF19F2B2E4B94EA004F660C /* LABAv2 */,
 			);
-			name = LABAv2;
+			name = "LABA Firenze";
 			packageProductDependencies = (
 			);
 			productName = LABAv2;
-			productReference = FCF19F292E4B94EA004F660C /* LABAv2.app */;
+			productReference = FCF19F292E4B94EA004F660C /* LABA Firenze.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -186,7 +186,7 @@
 					};
 				};
 			};
-			buildConfigurationList = FCF19F242E4B94EA004F660C /* Build configuration list for PBXProject "LABAv2" */;
+			buildConfigurationList = FCF19F242E4B94EA004F660C /* Build configuration list for PBXProject "LABA Firenze" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -200,7 +200,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				FCF19F282E4B94EA004F660C /* LABAv2 */,
+				FCF19F282E4B94EA004F660C /* LABA Firenze */,
 				FC9574842E4C170F00068076 /* LABAWidgetExtension */,
 			);
 		};
@@ -262,12 +262,13 @@
 				INFOPLIST_FILE = LABAWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = LABAWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.labafirenze.LABA.LABAWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -293,12 +294,13 @@
 				INFOPLIST_FILE = LABAWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = LABAWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.labafirenze.LABA.LABAWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -437,7 +439,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = LABAv2/LABAv2.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -451,12 +453,12 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.labafirenze.LABA;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -477,7 +479,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = LABAv2/LABAv2.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -491,12 +493,12 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.labafirenze.LABA;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -524,7 +526,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		FCF19F242E4B94EA004F660C /* Build configuration list for PBXProject "LABAv2" */ = {
+		FCF19F242E4B94EA004F660C /* Build configuration list for PBXProject "LABA Firenze" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				FCF19F322E4B94EB004F660C /* Debug */,
@@ -533,7 +535,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		FCF19F342E4B94EB004F660C /* Build configuration list for PBXNativeTarget "LABAv2" */ = {
+		FCF19F342E4B94EB004F660C /* Build configuration list for PBXNativeTarget "LABA Firenze" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				FCF19F352E4B94EB004F660C /* Debug */,

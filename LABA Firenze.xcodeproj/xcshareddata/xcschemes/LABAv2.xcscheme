@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "FCF19F282E4B94EA004F660C"
-               BuildableName = "LABAv2.app"
-               BlueprintName = "LABAv2"
-               ReferencedContainer = "container:LABAv2.xcodeproj">
+               BuildableName = "LABA Firenze.app"
+               BlueprintName = "LABA Firenze"
+               ReferencedContainer = "container:LABA Firenze.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "FCF19F282E4B94EA004F660C"
-            BuildableName = "LABAv2.app"
-            BlueprintName = "LABAv2"
-            ReferencedContainer = "container:LABAv2.xcodeproj">
+            BuildableName = "LABA Firenze.app"
+            BlueprintName = "LABA Firenze"
+            ReferencedContainer = "container:LABA Firenze.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -62,9 +62,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "FCF19F282E4B94EA004F660C"
-            BuildableName = "LABAv2.app"
-            BlueprintName = "LABAv2"
-            ReferencedContainer = "container:LABAv2.xcodeproj">
+            BuildableName = "LABA Firenze.app"
+            BlueprintName = "LABA Firenze"
+            ReferencedContainer = "container:LABA Firenze.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
