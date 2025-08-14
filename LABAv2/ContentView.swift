@@ -266,7 +266,7 @@ func courseDisplayInfo(from piano: String?) -> (name: String, aa: String)? {
 
     // Preferisci match più specifici prima dei generici
     let patterns: [(key: String, value: String)] = [
-        ("GRAPHIC DESIGN & MULTIMEDIA", "Graphic Design & Multimedia"),
+        ("GRAPHIC DESIGN & MULTIMEDIA", "Graphic Design"),
         ("PITTURA", "Pittura"),
         ("FASHION DESIGN", "Fashion Design"),
         ("REGIA E VIDEOMAKING", "Regia e Videomaking"),
@@ -2970,16 +2970,37 @@ struct HomeView: View {
         if isLaureato {
             HStack(spacing: 6) {
                 Pill(text: vm.graduatedWord(), kind: .status)
-                    .opacity(1)
-                Text("Perfma perchè usi ancora l'app?").font(.callout)
+                    .foregroundStyle(Color.white) // testo bianco nella pillola
+                    .background(
+                        Capsule().fill(Color.labaAccent) // fondo pieno accent
+                    )
+                    .overlay(
+                        Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1) // outline leggero
+                    )
+                    .compositingGroup()
+
+                Text("ma perché usi ancora l'app?")
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.95))
+
                 Spacer()
             }
         } else if let year = vm.currentYear {
             HStack(spacing: 8) {
-                Pill(text: italianOrdinalYear(year), kind: .year, tintOverride: yearTint(year)).opacity(1)
+                Pill(text: italianOrdinalYear(year), kind: .year)
+                    .foregroundStyle(Color.white) // testo bianco nella pillola
+                    .background(
+                        Capsule().fill(Color.labaAccent) // fondo pieno accent
+                    )
+                    .overlay(
+                        Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1) // outline leggero
+                    )
+                    .compositingGroup()
+
                 let disp = courseDisplayInfo(from: vm.pianoStudi)
                 Text((disp?.name ?? "") + ((disp?.aa ?? "").isEmpty ? "" : " • \(disp!.aa)"))
                     .font(.callout)
+                    .foregroundStyle(.white.opacity(0.95)) // corso + A.A. sempre bianchi in HERO
                 Spacer()
             }
         }
@@ -3009,7 +3030,6 @@ struct HomeView: View {
                                 .font(.largeTitle.bold())
                                 .foregroundStyle(.white)
                             statusPillRow
-                                .foregroundColor(.white.opacity(0.95))
                         }
                         .padding(.horizontal, 26)
                     }
@@ -3169,18 +3189,12 @@ struct HomeView: View {
                     RoundedRectangle(cornerRadius: 14)
                         .stroke((completedFocus ? Color.white.opacity(0.18) : Color.primary.opacity(0.06)), lineWidth: 1)
                 )
-                .overlay(
-                    // Glow statico e pulsante SOLO per la card "Esami mancanti" quando completata
-                    Group {
-                        StaticGlow(active: completedFocus, color: .labaAccent, corner: 14, opacity: 0.32, radius: 10)
-                        PulseGlow(active: completedFocus, color: .labaAccent, corner: 14)
-                    }
-                )
 
             // Content
             VStack(spacing: 6) {
                 if completedFocus {
-                    RibbonCheckIcon(size: 28, tint: .white)
+                    RibbonCHeckIcon(size: 28, tint: .white)
+                        .shadow(color: .black.opacity(0.18), radius: 1.5, x: 0, y: 1)
                     Text("Tutti sostenuti!")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.95))
@@ -3195,6 +3209,13 @@ struct HomeView: View {
             }
             .padding()
         }
+        .overlay(
+            Group {
+                // Glow leggero esterno SOLO per la card "Esami mancanti" quando completata
+                StaticGlow(active: completedFocus, color: .labaAccent, corner: 14, opacity: 0.18, radius: 8)
+                AIGlow(active: completedFocus, color: .labaAccent, corner: 14)
+            }
+        )
     }
     
     fileprivate struct PulseGlow: View {
@@ -3205,17 +3226,26 @@ struct HomeView: View {
 
         var body: some View {
             RoundedRectangle(cornerRadius: corner)
-                .stroke(Color.clear, lineWidth: 1)
-                .shadow(color: color.opacity(active ? (phase ? 0.55 : 0.25) : 0.0),
-                        radius: active ? (phase ? 10 : 4) : 0,
+                .stroke(color.opacity(active ? 0.001 : 0.0), lineWidth: 1) // micro-stroke per abilitare lo shadow
+                .shadow(color: color.opacity(active ? (phase ? 0.35 : 0.18) : 0.0),
+                        radius: active ? (phase ? 10 : 5) : 0,
                         x: 0, y: 0)
+                .allowsHitTesting(false)
                 .onAppear {
-                    if active { phase.toggle() }
+                    guard active else { return }
+                    withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                        phase.toggle()
+                    }
                 }
-                .animation(active
-                           ? .easeInOut(duration: 1.6).repeatForever(autoreverses: true)
-                           : .default,
-                           value: phase)
+                .onChange(of: active) { _, newVal in
+                    if newVal {
+                        withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                            phase = true
+                        }
+                    } else {
+                        phase = false
+                    }
+                }
         }
     }
 
@@ -3229,26 +3259,75 @@ struct HomeView: View {
 
         var body: some View {
             RoundedRectangle(cornerRadius: corner)
-                .fill(Color.clear)
+                .fill(color.opacity(active ? 0.001 : 0.0)) // micro-fill per permettere allo shadow di renderizzare
                 .shadow(color: color.opacity(active ? opacity : 0.0),
                         radius: active ? radius : 0,
                         x: 0, y: 0)
+                .allowsHitTesting(false)
         }
     }
 
-    // Ribbon with checkmark icon for all exams completed
-    fileprivate struct RibbonCheckIcon: View {
+    // Glow additivo stile "Apple Intelligence": leggero, fuori bordo, con respiro
+    fileprivate struct AIGlow: View {
+        let active: Bool
+        let color: Color
+        let corner: CGFloat
+        @State private var phase: Bool = false
+
+        var body: some View {
+            ZStack {
+                // Bloom esterno morbido (additivo)
+                RoundedRectangle(cornerRadius: corner)
+                    .fill(color.opacity(active ? (phase ? 0.18 : 0.10) : 0.0))
+                    .blur(radius: active ? (phase ? 18 : 10) : 0)
+                    .scaleEffect(active ? (phase ? 1.04 : 1.02) : 1)
+                    .blendMode(.screen)
+                    .padding(-12) // estendi oltre i bordi per far "uscire" il glow
+                    .allowsHitTesting(false)
+                    .compositingGroup()
+            }
+            .onAppear {
+                guard active else { return }
+                withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                    phase.toggle()
+                }
+            }
+            .onChange(of: active) { _, newVal in
+                if newVal {
+                    withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                        phase = true
+                    }
+                } else {
+                    phase = false
+                }
+            }
+        }
+    }
+
+    // Ribbon/premio con checkmark (come nella versione originale)
+    fileprivate struct RibbonCHeckIcon: View {
         var size: CGFloat = 28
         var tint: Color = .labaAccent
         var body: some View {
-            ZStack {
-                Image(systemName: "rosette")
-                    .font(.system(size: size))
-                    .foregroundColor(tint)
-                Image(systemName: "checkmark")
-                    .font(.system(size: size * 0.45, weight: .bold))
-                    .foregroundColor(.white)
-                    .offset(y: 0.5)
+            Group {
+                if #available(iOS 16.0, *) {
+                    Image(systemName: "ribbon.badge.checkmark")
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(tint)
+                        .font(.system(size: size, weight: .semibold))
+                } else {
+                    ZStack {
+                        Image(systemName: "ribbon.fill")
+                            .renderingMode(.template)
+                            .foregroundColor(tint)
+                            .font(.system(size: size, weight: .semibold))
+                        Image(systemName: "checkmark")
+                            .renderingMode(.template)
+                            .foregroundColor(.white)
+                            .font(.system(size: size * 0.38, weight: .bold))
+                            .offset(y: size * 0.10)
+                    }
+                }
             }
             .accessibilityLabel("Tutti gli esami sono stati sostenuti")
         }
@@ -3485,3 +3564,4 @@ struct ContentView: View {
 }
 
 struct ContentView_Previews: PreviewProvider { static var previews: some View { ContentView() } }
+ 
