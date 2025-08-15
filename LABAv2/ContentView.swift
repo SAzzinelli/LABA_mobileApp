@@ -1524,7 +1524,11 @@ struct LoginView: View {
                 }
 
             }
-            .sheet(isPresented: $showingInfo) { AccessHelpSheet().presentationDetents([.medium]) }
+            .sheet(isPresented: $showingInfo) {
+                AccessHelpSheet()
+                    .presentationDetents([.large, .medium])
+                    .presentationDragIndicator(.visible)
+            }
             .onAppear {
                 if !storedUsername.isEmpty { userBase = storedUsername }
                 // Warm up common SF Symbols once so tab bar icons render instantly later
@@ -1618,52 +1622,81 @@ struct LoginView: View {
 }
 
 struct AccessHelpSheet: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
+
     var body: some View {
         VStack(spacing: 8) {
+            // Grabber neutro (rispetta Light/Dark)
             Capsule()
-                .fill(Color.labaAccent)
+                .fill(Color.secondary.opacity(0.35))
                 .frame(width: 36, height: 5)
-                .padding(.top, 4)
+                .padding(.top, 6)
 
-            Text("Info accesso")
+            Text("Assistenza")
                 .font(.title2).bold()
                 .padding(.top, 2)
             Spacer().frame(height: 6)
 
             List {
-                Section {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Se riscontri problemi di accesso, contatta:")
-                        contactRow(title: "Segreteria Didattica", icon: "person.2.fill", tel: "0556530786")
-                        contactRow(title: "Reparto IT", icon: "desktopcomputer", tel: "3343824934")
+                // Guida rapida
+                Section("Guida rapida") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Usa l’email in formato nome.cognome@labafirenze.com", systemImage: "at")
+                        Label("Controlla maiuscole/minuscole della password", systemImage: "textformat")
+                        Label("Evita spazi iniziali/finali nei campi", systemImage: "rectangle.and.pencil.and.ellipsis")
+                        Label("Se hai appena cambiato password, attendi qualche minuto e riprova", systemImage: "clock")
                     }
-                } header: {
-                    Text("Assistenza accesso")
+                    .font(.subheadline)
+                }
+
+                // Recupero credenziali — stile riga standard (no pulsante blu)
+                Section("Recupero credenziali") {
+                    Button {
+                        let subject = "Assistenza accesso"
+                        let body = "Nome e cognome:%0A Matricola:%0A Dispositivo: iPhone/iPad%0A Versione iOS:%0A%0A Descrizione problema:%0A"
+                        let urlString = "mailto:info@laba.biz?subject=\(subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? subject)&body=\(body)"
+                        if let url = URL(string: urlString) { openURL(url) }
+                    } label: {
+                        HStack {
+                            Label("Richiedi reset password", systemImage: "key.fill")
+                            Spacer(minLength: 8)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                // Link utili — Sito e numeri (NO privacy policy)
+                Section("Link utili") {
+                    Link(destination: URL(string: "https://www.laba.biz")!) {
+                        Label("Sito LABA", systemImage: "globe")
+                    }
+                    Button {
+                        if let url = URL(string: "tel://0556530786") { openURL(url) }
+                    } label: {
+                        HStack {
+                            Label("Chiama Segreteria Didattica", systemImage: "phone.fill")
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        if let url = URL(string: "tel://3343824934") { openURL(url) }
+                    } label: {
+                        HStack {
+                            Label("Reparto IT", systemImage: "phone.fill")
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
         }
         .padding(.bottom, 0)
-    }
-
-    @ViewBuilder private func contactRow(title: String, icon: String, tel: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .foregroundStyle(Color.labaAccent)
-            Button {
-                if let url = URL(string: "tel://\(tel)") { openURL(url) }
-            } label: {
-                Text("Chiama")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.labaAccent)
-            .padding(.vertical, 6)
-        }
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 }
+
 
 struct NotificheView: View {
     @EnvironmentObject var vm: SessionVM
@@ -3186,8 +3219,7 @@ struct HomeView: View {
         // Outline più saturo e più scuro per staccare sia dal fill che dal gradient hero
         let ns = min(1.0, s + 0.18)
         let nb = max(0.0, b - 0.15)
-        let out = UIColor(hue: h, saturation: ns, brightness: nb, alpha: a)
-        return Color(hue: Double(h), saturation: Double(ns), brightness: Double(nb))
+        return Color(UIColor(hue: h, saturation: ns, brightness: nb, alpha: a))
 #else
         return Color.labaAccent.opacity(0.95)
 #endif
