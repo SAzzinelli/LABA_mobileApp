@@ -104,6 +104,20 @@ import PhotosUI
 import UIKit
 import UserNotifications
 
+// MARK: - AppDelegate per catturare il token APNs
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        print("📲 Device Token: \(token)")
+    }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("❌ Registrazione notifiche fallita: \(error.localizedDescription)")
+    }
+}
+
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
@@ -2679,9 +2693,9 @@ struct ProfiloView: View {
                     Link(destination: URL(string: "https://wa.me/393316392105")!) {
                         HStack(spacing: 8) {
                             Image(systemName: "ellipsis.message.fill")
-                                .foregroundColor(Color(red: 37/255, green: 211/255, blue: 102/255)) // WhatsApp green
+                                .foregroundColor(Color(red: 37/255, green: 185/255, blue: 102/255)) // WhatsApp green
                             Text("Scrivi su WhatsApp")
-                                .foregroundColor(Color(red: 37/255, green: 211/255, blue: 102/255)) // WhatsApp green
+                                .foregroundColor(Color(red: 37/255, green: 185/255, blue: 102/255)) // WhatsApp green
                         }
                     }
                     Link(destination: URL(string: "https://www.laba.biz")!) {

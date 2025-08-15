@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import UserNotifications
+import UIKit
 
 @main
 struct LABAv2App: App {
@@ -14,4 +16,22 @@ struct LABAv2App: App {
             ContentView()
         }
     }
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    init() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+            if let error = error {
+                print("Errore richiesta notifiche: \(error.localizedDescription)")
+                return
+            }
+            if granted {
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            } else {
+                print("Permesso notifiche negato")
+            }
+        }
+    }
 }
+
+
