@@ -123,6 +123,22 @@ extension Color {
     static let pillBGLaureato = Color(.systemOrange)
 }
 
+// Pre-warm commonly used SF Symbols so the tab bar icons don't lag on first render
+@inline(__always)
+func warmUpSymbols() {
+    #if canImport(UIKit)
+    let names = [
+        "house", "graduationcap", "bell", "person.crop.circle",
+        // add any other symbols you use often in headers or toolbars
+        "calendar", "ellipsis.circle", "info.circle", "lock.fill", "person.fill"
+    ]
+    let config = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+    for n in names {
+        _ = UIImage(systemName: n, withConfiguration: config)
+    }
+    #endif
+}
+
 // MARK: - Helper Functions
 
 func ddMMyyyy(_ date: Date?) -> String {
@@ -1298,7 +1314,7 @@ struct AnimatedPatternBackground: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1.0/30.0)) { timeline in
+        TimelineView(.periodic(from: .now, by: 1.0/15.0)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
             GeometryReader { geo in
                 let base = Color(uiColor: .systemBackground)
@@ -1346,6 +1362,7 @@ struct LoginView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var passwordVisible = false
     @FocusState private var focusedField: Field?
+    @State private var startAnimations = false
     private enum Field { case user, password }
     // Easter Egg states
     @State private var showEasterEgg = false
@@ -1360,7 +1377,10 @@ struct LoginView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AnimatedPatternBackground()
+                if startAnimations {
+                    AnimatedPatternBackground()
+                        .transition(.opacity)
+                }
                 VStack(spacing: 20) {
                     // Logo with Easter Egg long press
                     Group {
@@ -1505,7 +1525,15 @@ struct LoginView: View {
 
             }
             .sheet(isPresented: $showingInfo) { AccessHelpSheet().presentationDetents([.medium]) }
-            .onAppear { if !storedUsername.isEmpty { userBase = storedUsername } }
+            .onAppear {
+                if !storedUsername.isEmpty { userBase = storedUsername }
+                // Warm up common SF Symbols once so tab bar icons render instantly later
+                warmUpSymbols()
+                // Defer animated background slightly to avoid fighting with first-frame UI work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation(.easeInOut(duration: 0.25)) { startAnimations = true }
+                }
+            }
             .fullScreenCover(isPresented: $showEasterEgg) {
                 LABAEggView(onClose: { showEasterEgg = false })
                     .transition(.opacity)
@@ -1769,11 +1797,30 @@ struct ExamsView: View {
         }
     }
     private var filtered: [Esame] {
-        let base = filteredByStatus
-        guard !query.isEmpty else { return base }
+        // Base già filtrata (per anno/stato) — usa l’array che stai mostrando nel body
+        let base = filteredByYear   // <-- se nel tuo codice è un altro nome, metti quello
+
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty { return base }
+
+        let qLower = q.lowercased()
+        let numericQuery: Int? = {
+            let digits = q.filter { $0.isNumber }
+            return digits.isEmpty ? nil : Int(digits)
+        }()
+
         return base.filter { e in
-            let title = prettifyTitle(e.corso)
-            return title.localizedCaseInsensitiveContains(query) || (e.docente ?? "").localizedCaseInsensitiveContains(query)
+            // Titolo corso o docente
+            if prettifyTitle(e.corso).localizedCaseInsensitiveContains(q) { return true }
+            if (e.docente ?? "").localizedCaseInsensitiveContains(q) { return true }
+
+            // Ricerca per voto numerico (es. "28" -> 28/30)
+            if let want = numericQuery, let got = voteNumber(from: e.voto), want == got { return true }
+
+            // Ricerca per idoneità
+            if qLower.contains("idone"), isIdoneitaVote(e.voto) { return true }
+
+            return false
         }
     }
 
@@ -1790,6 +1837,21 @@ struct ExamsView: View {
         return t.contains("attivit") || t.contains("tesi")
     }
 
+    // Estrae il numero di voto (es. "28/30" -> 28); nil se non presente
+    private func voteNumber(from voto: String?) -> Int? {
+        guard let v = voto?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { return nil }
+        let comps = v.components(separatedBy: "/")
+        if let first = comps.first?.trimmingCharacters(in: .whitespaces),
+           let n = Int(first) { return n }
+        return nil
+    }
+
+    // True se il voto è un'esito di idoneità
+    private func isIdoneitaVote(_ voto: String?) -> Bool {
+        guard let v = voto?.lowercased() else { return false }
+        return v.contains("idoneo") || v.contains("idonea") || v.contains("idoneità")
+    }
+    
     var body: some View {
         NavigationStack {
             List {
@@ -1990,11 +2052,39 @@ struct CorsiView: View {
 
     private var years: [Int] { let ys = Set(vm.esami.compactMap { $0.anno }); return [0] + ys.sorted() }
     private var filteredByYear: [Esame] { selectedYear == 0 ? vm.esami : vm.esami.filter { $0.anno == selectedYear } }
+    // Estrae il numero di voto (es. "28/30" -> 28); restituisce nil se non presente
+    private func voteNumber(from voto: String?) -> Int? {
+        guard let v = voto?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { return nil }
+        // Formato tipico: "28/30" oppure "30 / 30" ecc.
+        let comps = v.components(separatedBy: "/")
+        if let first = comps.first?.trimmingCharacters(in: .whitespaces), let n = Int(first) { return n }
+        return nil
+    }
+
+    // True se il voto rappresenta un'idoneità
+    private func isIdoneitaVote(_ voto: String?) -> Bool {
+        guard let v = voto?.lowercased() else { return false }
+        return v.contains("idoneo") || v.contains("idonea") || v.contains("idoneità")
+    }
+
     private var filtered: [Esame] {
-        guard !query.isEmpty else { return filteredByYear }
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty { return filteredByYear }
+        let qLower = q.lowercased()
+        let numericQuery: Int? = {
+            let digits = q.filter({ $0.isNumber })
+            return digits.isEmpty ? nil : Int(digits)
+        }()
+
         return filteredByYear.filter { c in
-            prettifyTitle(c.corso).localizedCaseInsensitiveContains(query) ||
-            (c.docente ?? "").localizedCaseInsensitiveContains(query)
+            // 1) titolo corso o docente
+            if prettifyTitle(c.corso).localizedCaseInsensitiveContains(q) { return true }
+            if (c.docente ?? "").localizedCaseInsensitiveContains(q) { return true }
+            // 2) ricerca per voto numerico (es. "28" → trova 28/30)
+            if let want = numericQuery, let got = voteNumber(from: c.voto), want == got { return true }
+            // 3) ricerca per idoneità (query contiene "idoneo/a/ità")
+            if qLower.contains("idone"), isIdoneitaVote(c.voto) { return true }
+            return false
         }
     }
 
@@ -2115,7 +2205,6 @@ struct CorsiView: View {
     }
 }
 
-// MARK: - Course Detail View
 
 struct CourseDetailView: View {
     @EnvironmentObject var vm: SessionVM
@@ -2479,30 +2568,57 @@ struct ProfiloView: View {
 
                 Section {
                     Link(destination: URL(string: "mailto:info@laba.biz")!) {
-                        Label("Scrivi alla Segreteria", systemImage: "envelope.fill")
+                        HStack(spacing: 8) {
+                            Image(systemName: "envelope.fill")
+                                .foregroundColor(Color.labaAccent) // icona = accent
+                            Text("Scrivi alla Segreteria")
+                                .foregroundColor(colorScheme == .dark ? .white : .primary) // testo: bianco in dark, default in light
+                        }
                     }
                     Link(destination: URL(string: "https://www.laba.biz")!) {
-                        Label("Sito web LABA", systemImage: "globe")
+                        HStack(spacing: 8) {
+                            Image(systemName: "globe")
+                                .foregroundColor(Color.labaAccent)
+                            Text("Sito web LABA")
+                                .foregroundColor(colorScheme == .dark ? .white : .primary)
+                        }
                     }
                     Link(destination: URL(string: "https://www.laba.biz/privacy-policy")!) {
-                        Label("Privacy Policy", systemImage: "hand.raised.fill")
+                        HStack(spacing: 8) {
+                            Image(systemName: "hand.raised.fill")
+                                .foregroundColor(Color.labaAccent)
+                            Text("Privacy Policy")
+                                .foregroundColor(colorScheme == .dark ? .white : .primary)
+                        }
                     }
                 } header: {
                     Text("Link utili")
                 }
                 Section {
-                    Button(role: .destructive) { vm.logout() } label: {
-                        Text("Logout")
-                            .font(.headline.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                            .foregroundColor(.white)
+                    // Ricarica dati — stile identico a "Link utili": icona + testo, entrambi blu LABA
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        Task { await vm.restoreSession() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.clockwise.circle.fill")
+                            Text("Ricarica dati")
+                        }
+                        .foregroundColor(Color.labaAccent)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.roundedRectangle(radius: 12))
-                    .tint(.red)
+
+                    // Esci — rosso: icona + testo
+                    Button(role: .destructive) {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        vm.logout()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right.fill")
+                            Text("Esci")
+                        }
+                        .foregroundColor(.red)
+                    }
                 }
-                .listRowBackground(Color.clear)
             }
             .navigationTitle("Profilo")
             .navigationBarTitleDisplayMode(.large)
@@ -3266,7 +3382,6 @@ struct HomeView: View {
             VStack(spacing: 6) {
                 if completedFocus {
                     RibbonCheckIcon(size: 28, tint: .white)
-                        .shadow(color: .black.opacity(0.18), radius: 1.5, x: 0, y: 1)
                     Text("Hai sostenuto tutti gli esami!")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.95))
@@ -3590,6 +3705,28 @@ extension Color {
         if key == "system" || key == "seafoam" {
             return Color.accentColor
         }
+        // Per il colore "brand" (Blu LABA) usa una variante dinamica più leggibile in Dark Mode
+        if key == "brand" {
+            #if canImport(UIKit)
+            let base = UIColor(AccentPalette.color(named: "brand"))
+            let dynamic = UIColor { tc in
+                if tc.userInterfaceStyle == .dark {
+                    var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                    guard base.getHue(&h, saturation: &s, brightness: &b, alpha: &a) else { return base }
+                    // Aumenta la leggibilità su sfondo scuro: alza la luminosità minima e riduci leggermente la saturazione
+                    let nb = min(1.0, max(b, 0.86))          // almeno ~86% di brightness
+                    let ns = min(1.0, max(0.60, s * 0.95))   // saturazione leggermente ridotta ma ancora "blu LABA"
+                    return UIColor(hue: h, saturation: ns, brightness: nb, alpha: a)
+                } else {
+                    return base // Light Mode: blu LABA puro
+                }
+            }
+            return Color(dynamic)
+            #else
+            return AccentPalette.color(named: "brand")
+            #endif
+        }
+        // Altri accenti: usa la palette così com'è
         return AccentPalette.color(named: key)
     }
 }
@@ -3599,46 +3736,63 @@ extension Color {
 struct ContentView: View {
     @StateObject private var vm = SessionVM()
     @State private var selectedTab = 0
+    @State private var isBooting = true
+    
     @AppStorage("laba.theme") private var themePreference: String = "system"
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
-        Group {
-            if vm.isLoggedIn {
-                TabView(selection: $selectedTab) {
-                    HomeView()
-                        .tabItem { Label("Home", systemImage: "house.fill") }
-                        .tag(0)
-                        .environmentObject(vm)
-                    ExamsView()
-                        .tabItem { Label("Esami", systemImage: "list.bullet.rectangle.fill") }
-                        .badge(vm.bookableExamsCount > 0 ? "!" : nil)
-                        .tag(1)
-                        .environmentObject(vm)
-                    CorsiView()
-                        .tabItem { Label("Corsi", systemImage: "graduationcap.fill") }
-                        .tag(2)
-                        .environmentObject(vm)
-                    SeminariView()
-                        .tabItem { Label("Seminari", systemImage: "calendar.badge.clock") }
-                        .badge(vm.bookableSeminarsCount)
-                        .tag(3)
-                        .environmentObject(vm)
-                    ProfiloView()
-                        .tabItem { Label("Profilo", systemImage: "person.crop.circle.fill") }
-                        .tag(4)
-                        .environmentObject(vm)
+        ZStack {
+            Group {
+                if vm.isLoggedIn {
+                    TabView(selection: $selectedTab) {
+                        HomeView()
+                            .tabItem { Label("Home", systemImage: "house.fill") }
+                            .tag(0)
+                            .environmentObject(vm)
+                        ExamsView()
+                            .tabItem { Label("Esami", systemImage: "list.bullet.rectangle.fill") }
+                            .badge(vm.bookableExamsCount > 0 ? "!" : nil)
+                            .tag(1)
+                            .environmentObject(vm)
+                        CorsiView()
+                            .tabItem { Label("Corsi", systemImage: "graduationcap.fill") }
+                            .tag(2)
+                            .environmentObject(vm)
+                        SeminariView()
+                            .tabItem { Label("Seminari", systemImage: "calendar.badge.clock") }
+                            .badge(vm.bookableSeminarsCount)
+                            .tag(3)
+                            .environmentObject(vm)
+                        ProfiloView()
+                            .tabItem { Label("Profilo", systemImage: "person.crop.circle.fill") }
+                            .tag(4)
+                            .environmentObject(vm)
+                    }
+                    .tint(Color.labaAccent)
+                    .accentColor(Color.labaAccent)
+                } else {
+                    LoginView().environmentObject(vm)
                 }
-                .tint(Color.labaAccent)
-                .accentColor(Color.labaAccent)
-            } else {
-                LoginView().environmentObject(vm)
+            }
+
+            // Overlay: splash/loader iniziale
+            if isBooting {
+                AppLoadingView()
+                    .transition(.opacity)
+                    .zIndex(1)
             }
         }
-        .task { await vm.restoreSession() }
+        .task {
+            await vm.restoreSession()
+            withAnimation(.easeOut(duration: 0.25)) {
+                isBooting = false
+            }
+        }
         .preferredColorScheme(preferredScheme(from: themePreference))
     }
 }
+
 
 struct ContentView_Previews: PreviewProvider { static var previews: some View { ContentView() } }
  
