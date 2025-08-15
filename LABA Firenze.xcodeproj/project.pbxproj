@@ -7,9 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FC42158B2E4FC160008033F4 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = FC42158A2E4FC160008033F4 /* GoogleService-Info.plist */; };
 		FC9574862E4C170F00068076 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC9574652E4C14D000068076 /* WidgetKit.framework */; };
 		FC9574872E4C170F00068076 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC9574672E4C14D100068076 /* SwiftUI.framework */; };
 		FC9574982E4C171000068076 /* LABAWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FC9574852E4C170F00068076 /* LABAWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FC9D32252E4FC93300AF903C /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = FC9D32242E4FC93300AF903C /* FirebaseCore */; };
+		FC9D32272E4FC93300AF903C /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = FC9D32262E4FC93300AF903C /* FirebaseMessaging */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -37,6 +40,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		FC42158A2E4FC160008033F4 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		FC9574652E4C14D000068076 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		FC9574672E4C14D100068076 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		FC9574852E4C170F00068076 /* LABAWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LABAWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -84,6 +88,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FC9D32272E4FC93300AF903C /* FirebaseMessaging in Frameworks */,
+				FC9D32252E4FC93300AF903C /* FirebaseCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -107,6 +113,7 @@
 				FC9574882E4C170F00068076 /* LABAWidget */,
 				FC9574642E4C14D000068076 /* Frameworks */,
 				FCF19F2A2E4B94EA004F660C /* Products */,
+				FC42158A2E4FC160008033F4 /* GoogleService-Info.plist */,
 			);
 			sourceTree = "<group>";
 		};
@@ -163,6 +170,8 @@
 			);
 			name = "LABA Firenze";
 			packageProductDependencies = (
+				FC9D32242E4FC93300AF903C /* FirebaseCore */,
+				FC9D32262E4FC93300AF903C /* FirebaseMessaging */,
 			);
 			productName = LABAv2;
 			productReference = FCF19F292E4B94EA004F660C /* LABA Firenze.app */;
@@ -195,6 +204,9 @@
 			);
 			mainGroup = FCF19F202E4B94EA004F660C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				FC9D32232E4FC93300AF903C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FCF19F2A2E4B94EA004F660C /* Products */;
 			projectDirPath = "";
@@ -218,6 +230,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FC42158B2E4FC160008033F4 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -256,7 +269,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = LABAWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 102;
 				DEVELOPMENT_TEAM = 9747WYS86R;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LABAWidget/Info.plist;
@@ -268,7 +281,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.labafirenze.LABA.LABAWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -288,7 +301,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = LABAWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 102;
 				DEVELOPMENT_TEAM = 9747WYS86R;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LABAWidget/Info.plist;
@@ -300,7 +313,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.labafirenze.LABA.LABAWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -442,7 +455,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = LABAv2/LABAv2.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 102;
 				DEVELOPMENT_TEAM = 9747WYS86R;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -459,7 +472,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.labafirenze.LABA;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -483,7 +496,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = LABAv2/LABAv2.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 102;
 				DEVELOPMENT_TEAM = 9747WYS86R;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -500,7 +513,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.labafirenze.LABA;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -547,6 +560,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FC9D32232E4FC93300AF903C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FC9D32242E4FC93300AF903C /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FC9D32232E4FC93300AF903C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		FC9D32262E4FC93300AF903C /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FC9D32232E4FC93300AF903C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FCF19F212E4B94EA004F660C /* Project object */;
 }

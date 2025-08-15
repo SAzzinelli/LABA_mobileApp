@@ -104,20 +104,6 @@ import PhotosUI
 import UIKit
 import UserNotifications
 
-// MARK: - AppDelegate per catturare il token APNs
-class AppDelegate: NSObject, UIApplicationDelegate {
-    func application(_ application: UIApplication,
-                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
-        print("📲 Device Token: \(token)")
-    }
-
-    func application(_ application: UIApplication,
-                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        print("❌ Registrazione notifiche fallita: \(error.localizedDescription)")
-    }
-}
-
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
@@ -1367,6 +1353,7 @@ struct AnimatedPatternBackground: View {
 struct LoginView: View {
     @EnvironmentObject var vm: SessionVM
     @AppStorage("laba.usernameBase") private var storedUsername: String = ""
+    @AppStorage("laba.didPromptNotifications") private var didPromptNotifications: Bool = false
 
     @State private var userBase = ""
     @State private var password = ""
@@ -1564,6 +1551,22 @@ struct LoginView: View {
         isLoading = true
         defer { isLoading = false }
         await vm.signIn(username: userBase, password: password)
+        // Al primo login riuscito, chiedi i permessi push (solo una volta)
+        if vm.isLoggedIn {
+            requestPushPermissionIfNeeded()
+        }
+    }
+
+    private func requestPushPermissionIfNeeded() {
+        guard !didPromptNotifications else { return }
+        didPromptNotifications = true
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            if granted {
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
+        }
     }
 
     // MARK: - Escalation Haptics (5s..10s)
@@ -2513,6 +2516,110 @@ struct SeminarioDetailView: View {
     }
 }
 
+// MARK: - Push Inbox Model (local persistence)
+extension Notification.Name {
+    static let labaDidReceiveRemoteNotification = Notification.Name("labaDidReceiveRemoteNotification")
+}
+
+struct InboxItem: Identifiable, Codable, Hashable {
+    let id: String
+    let title: String
+    let body: String
+    let date: Date
+    var isRead: Bool
+}
+
+final class NotificationInboxStore: ObservableObject {
+    @Published private(set) var items: [InboxItem] = []
+    private let storageKey = "laba.inbox.items"
+
+    init() {
+        load()
+        updateBadge()
+    }
+
+    func add(from userInfo: [AnyHashable: Any]) {
+        var title: String = "Notifica"
+        var body: String = ""
+
+        // APNs classico: aps.alert può essere Dictionary o String
+        if let aps = userInfo["aps"] as? [AnyHashable: Any] {
+            if let alertDict = aps["alert"] as? [AnyHashable: Any] {
+                if let t = alertDict["title"] as? String { title = t }
+                if let b = alertDict["body"] as? String { body = b }
+            } else if let alertStr = aps["alert"] as? String {
+                body = alertStr
+            }
+        }
+
+        // FCM console: può mettere anche "notification" top-level
+        if let notif = userInfo["notification"] as? [AnyHashable: Any] {
+            if let t = notif["title"] as? String { title = t }
+            if let b = notif["body"] as? String { body = b }
+        }
+
+        // Fallback custom (alcune console mettono title/body top-level)
+        if let t = userInfo["title"] as? String { title = t }
+        if let b = userInfo["body"] as? String { body = b }
+
+        let item = InboxItem(id: UUID().uuidString, title: title, body: body, date: Date(), isRead: false)
+        DispatchQueue.main.async {
+            self.items.insert(item, at: 0)
+            self.save()
+            self.updateBadge()
+        }
+    }
+
+    func markRead(_ id: String, _ read: Bool) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        items[i].isRead = read
+        save(); updateBadge()
+    }
+
+    func markAllRead() {
+        items = items.map { var m = $0; m.isRead = true; return m }
+        save(); updateBadge()
+    }
+
+    func delete(_ offsets: IndexSet) {
+        items.remove(atOffsets: offsets)
+        save(); updateBadge()
+    }
+
+    /// Remove an item by id (public remover)
+    func remove(id: String) {
+        if let idx = items.firstIndex(where: { $0.id == id }) {
+            items.remove(at: idx)
+            save(); updateBadge()
+        }
+    }
+
+    var unreadCount: Int { items.filter { !$0.isRead }.count }
+
+    private func save() {
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
+        if let data = try? enc.encode(items) {
+            UserDefaults.standard.set(data, forKey: storageKey)
+        }
+    }
+    private func load() {
+        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return }
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+        if let arr = try? dec.decode([InboxItem].self, from: data) {
+            self.items = arr
+        }
+    }
+
+    private func updateBadge() {
+        #if canImport(UIKit)
+        UNUserNotificationCenter.current().setBadgeCount(unreadCount) { error in
+            if let error = error {
+                print("Errore nell'aggiornare il badge: \(error)")
+            }
+        }        #endif
+    }
+}
+
 // MARK: - Profilo (minimal, keeps earlier behavior)
 
 struct ProfilePill: View {
@@ -2531,6 +2638,7 @@ struct ProfilePill: View {
 
 struct ProfiloView: View {
     @EnvironmentObject var vm: SessionVM
+    @EnvironmentObject var inbox: NotificationInboxStore
     @State private var showPhotoPicker = false
     @State private var selectedItem: PhotosPickerItem? = nil
     @State private var profileImage: Image? = nil
@@ -2580,6 +2688,24 @@ struct ProfiloView: View {
                 }
             @unknown default:
                 break
+            }
+        }
+    }
+
+    // Synchronize the notifications toggle with the real system status
+    private func syncNotificationToggleFromSystem() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let isOn: Bool
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                isOn = true
+            case .denied, .notDetermined:
+                isOn = false
+            @unknown default:
+                isOn = false
+            }
+            DispatchQueue.main.async {
+                self.notificationsEnabled = isOn
             }
         }
     }
@@ -2781,9 +2907,13 @@ struct ProfiloView: View {
                 }
             }
             .onAppear {
+                syncNotificationToggleFromSystem()
                 if let ui = (!avatarData.isEmpty ? UIImage(data: avatarData) : nil) {
                     profileImage = Image(uiImage: ui)
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                syncNotificationToggleFromSystem()
             }
             .overlay(alignment: .center) {
                 if isRefreshing {
@@ -2810,7 +2940,310 @@ struct ProfiloView: View {
                     .transition(.opacity)
                 }
             }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        NotificheInboxView().environmentObject(inbox)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "bell.fill")
+                                .font(.headline)
+                                .foregroundStyle(inbox.unreadCount > 0 ? Color.red : Color.primary)
+                            if inbox.unreadCount > 0 {
+                                Text("\(min(inbox.unreadCount, 99))")
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundColor(.red)
+                                    .monospacedDigit()
+                            }
+                        }
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                        .accessibilityLabel("Notifiche")
+                        .accessibilityValue(inbox.unreadCount > 0 ? "\(inbox.unreadCount) non lette" : "Nessuna notifica non letta")
+                    }
+                }
+            }
         }
+    }
+}
+
+
+struct NotificheInboxView: View {
+    @EnvironmentObject var inbox: NotificationInboxStore
+
+    @State private var previewItem: InboxItem? = nil
+    @State private var showBulkConfirm: Bool = false
+    @State private var bulkAction: BulkAction? = nil
+
+    private enum BulkAction { case markAllRead, markAllUnread, deleteAll }
+
+    private func format(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .short; return f.string(from: d)
+    }
+
+    var body: some View {
+        Group {
+            if inbox.items.isEmpty {
+                List {
+                    Section {
+                        VStack(spacing: 10) {
+                            Image(systemName: "bell.slash.fill").font(.largeTitle).foregroundStyle(.secondary)
+                            Text("Nessuna notifica").font(.headline)
+                            Text("Quando arriveranno, le troverai qui.").font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                    }
+                }
+            } else {
+                List {
+                    Section {
+                        ForEach(inbox.items) { item in
+                            NavigationLink(destination: NotificaDetailView(item: item).environmentObject(inbox)) {
+                                NotificaRowCard(item: item, dateString: format(item.date))
+                            }
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowBackground(Color.clear)
+                            .contextMenu {
+                                if item.isRead {
+                                    Button("Da leggere", systemImage: "envelope.badge") { inbox.markRead(item.id, false) }
+                                } else {
+                                    Button("Segna letta", systemImage: "checkmark.seal.fill") { inbox.markRead(item.id, true) }
+                                }
+                                Divider()
+                                Button("Anteprima", systemImage: "eye") { previewItem = item }
+                                Button(role: .destructive) { inbox.remove(id: item.id) } label: {
+                                    Label("Elimina", systemImage: "trash")
+                                }
+                            }
+                            .onLongPressGesture { previewItem = item }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                if item.isRead {
+                                    Button("Da leggere") { inbox.markRead(item.id, false) }.tint(.orange)
+                                } else {
+                                    Button("Letta") { inbox.markRead(item.id, true) }.tint(.green)
+                                }
+                                Button(role: .destructive) { inbox.remove(id: item.id) } label: { Label("Elimina", systemImage: "trash") }
+                            }
+                        }
+                        .onDelete { idx in inbox.delete(idx) }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Segna tutte lette", systemImage: "checkmark.seal.fill") { bulkAction = .markAllRead; showBulkConfirm = true }
+                    Button("Segna tutte da leggere", systemImage: "envelope.badge") { bulkAction = .markAllUnread; showBulkConfirm = true }
+                    Divider()
+                    Button(role: .destructive) { bulkAction = .deleteAll; showBulkConfirm = true } label: {
+                        Label("Elimina tutte", systemImage: "trash")
+                    }
+                } label: {
+                    Label("Azioni", systemImage: "ellipsis.circle")
+                }
+            }
+        }
+        .navigationTitle("Notifiche")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $previewItem) { it in
+            NotificaPreviewSheet(item: it, dateString: format(it.date))
+        }
+        .alert("Sei sicuro?", isPresented: $showBulkConfirm) {
+            switch bulkAction {
+            case .markAllRead:
+                Button("Segna tutte lette", role: .none) { inbox.markAllRead() }
+            case .markAllUnread:
+                Button("Segna tutte da leggere", role: .none) {
+                    for id in inbox.items.map({ $0.id }) { inbox.markRead(id, false) }
+                }
+            case .deleteAll:
+                Button("Elimina tutte", role: .destructive) {
+                    let idx = IndexSet(inbox.items.indices)
+                    inbox.delete(idx)
+                }
+            case .none:
+                EmptyView()
+            }
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("Questa azione non può essere annullata.")
+        }
+    }
+}
+
+fileprivate struct NotificaRowCard: View {
+    let item: InboxItem
+    let dateString: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill((item.isRead ? Color.gray.opacity(0.15) : Color.labaAccent.opacity(0.18)))
+                    .frame(width: 34, height: 34)
+                Image(systemName: item.isRead ? "bell" : "bell.badge.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(item.isRead ? .secondary : Color.labaAccent)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+                    Spacer(minLength: 8)
+                    Text(dateString)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Text(item.body)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
+fileprivate struct NotificaPreviewSheet: View, Identifiable {
+    var id: String { item.id }
+    let item: InboxItem
+    let dateString: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Anteprima").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text(dateString).font(.caption2).foregroundStyle(.secondary)
+            }
+            Text(item.title).font(.headline)
+            Text(item.body).font(.body)
+                .foregroundStyle(.primary)
+                .lineLimit(nil)
+            Spacer(minLength: 0)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemGroupedBackground)))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.primary.opacity(0.06), lineWidth: 1))
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+struct NotificaDetailView: View {
+    @EnvironmentObject var inbox: NotificationInboxStore
+    @Environment(\.dismiss) private var dismiss
+    let item: InboxItem
+
+    private func format(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; return f.string(from: d)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // Header compact
+                HStack(alignment: .top, spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.labaAccent.opacity(0.18))
+                            .frame(width: 34, height: 34)
+                        Image(systemName: "bell.fill").font(.subheadline).foregroundStyle(Color.labaAccent)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(item.title)
+                            .font(.title3.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 6) {
+                            Text(format(item.date)).font(.caption).foregroundStyle(.secondary)
+                            if item.isRead {
+                                Label("Letta", systemImage: "checkmark.seal.fill").font(.caption2).foregroundStyle(.secondary)
+                            } else {
+                                Label("Da leggere", systemImage: "envelope.badge").font(.caption2).foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemGroupedBackground)))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.06), lineWidth: 1))
+
+                // Body text
+                Text(item.body)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .systemBackground)))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.06), lineWidth: 1))
+            }
+            .padding()
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle("Dettaglio")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if item.isRead {
+                        Button("Da leggere", systemImage: "envelope.badge") { inbox.markRead(item.id, false) }
+                    } else {
+                        Button("Segna letta", systemImage: "checkmark.seal.fill") { inbox.markRead(item.id, true) }
+                    }
+                    Divider()
+                    Button(role: .destructive) { inbox.remove(id: item.id); dismiss() } label: {
+                        Label("Elimina", systemImage: "trash")
+                    }
+                    ShareLink(item: "\(item.title) — \(item.body)")
+                } label: {
+                    Label("Azioni", systemImage: "ellipsis.circle")
+                }
+            }
+        }
+        .onAppear { inbox.markRead(item.id, true) }
+    }
+}
+
+fileprivate struct ActionTile: View {
+    let icon: String
+    let label: String
+    let tint: Color
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundStyle(tint)
+                    .frame(width: 56, height: 56)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(tint.opacity(0.15))
+                    )
+                Text(label)
+                    .font(.footnote)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -3261,26 +3694,33 @@ struct CalcolaMediaView: View {
                     Button {
                         inputAvg = String(format: "%.1f", s)
                     } label: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "sparkles")
-                                Text("Utilizza la media proposta")
-                                Spacer()
-                                HStack(spacing: 6) {
-                                    Text(String(format: "%.1f", s))
+                        ZStack(alignment: .trailing) {
+                            // Testo a sinistra, lasciamo spazio a destra per il cerchio
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "sparkles")
+                                    Text("Utilizza la media proposta")
                                         .font(.subheadline.weight(.semibold))
-                                        .foregroundColor(.white)
-                                        .frame(width: 34, height: 34)
-                                        .background(
-                                            Circle().fill(Color.labaAccent)
-                                        )
+                                    Spacer(minLength: 0)
                                 }
+                                Text("La media proposta dall'applicazione LABA tiene conto dei valori ufficiali, con un margine di errore minimo.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            Text("La media proposta dall'applicazione LABA tiene conto dei valori ufficiali, con un margine di errore minimo.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            .padding(.trailing, 76) // spazio per il cerchio grande
+
+                            // Cerchio grande centrato verticalmente
+                            Text(String(format: "%.1f", s))
+                                .font(.headline.weight(.semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 56, height: 56)
+                                .background(
+                                    Circle().fill(Color.labaAccent)
+                                )
+                                .padding(.trailing, 2)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -3299,7 +3739,7 @@ struct CalcolaMediaView: View {
                     Group {
                         Text("1) Vengono considerati tutti gli esami con voto numerico. “30 e lode” conta come 30/30.")
                         Text("2) Idoneità, attività integrative e tirocini non entrano nel calcolo.")
-                        Text("3) Come viene calcolata la media generale: sommiamo i voti di tutti gli esami con voto registrato previsti dal tuo piano di studi e dividiamo per il numero di questi esami. (Gli esami senza voto non vengono conteggiati.)")
+                        Text("3) Vengono sommati i voti di tutti gli esami con voto registrato e divisi per il numero di questi esami. (Gli esami senza voto non vengono conteggiati.)")
                         Text("4) Da qui si ottiene il voto d’ingresso in tesi: convertiamo la media in /110 con media × 110 ÷ 30.")
                         Text("5) Arrotondamento: se la parte decimale > 0,50 arrotondiamo in su, altrimenti in giù.")
                         Text("Esempio: 28,8 × 110 ÷ 30 = 105,69 → ti presenterai con 106/110.")
@@ -4206,10 +4646,12 @@ struct ContentView: View {
     @StateObject private var vm = SessionVM()
     @State private var selectedTab = 0
     @State private var isBooting = true
-    
+    @StateObject private var inbox = NotificationInboxStore()
+
     @AppStorage("laba.theme") private var themePreference: String = "system"
     @Environment(\.colorScheme) private var colorScheme
-    
+    private let pendingPushStorageKey = "laba.pendingPush.userInfo"
+
     var body: some View {
         ZStack {
             Group {
@@ -4237,6 +4679,7 @@ struct ContentView: View {
                             .tabItem { Label("Profilo", systemImage: "person.crop.circle.fill") }
                             .tag(4)
                             .environmentObject(vm)
+                            .environmentObject(inbox)
                     }
                     .tint(Color.labaAccent)
                     .accentColor(Color.labaAccent)
@@ -4257,8 +4700,28 @@ struct ContentView: View {
             withAnimation(.easeOut(duration: 0.25)) {
                 isBooting = false
             }
+            consumePendingPush()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .labaDidReceiveRemoteNotification)) { note in
+            if let ui = note.userInfo {
+                DispatchQueue.main.async {
+                    inbox.add(from: ui)
+                }
+            }
         }
         .preferredColorScheme(preferredScheme(from: themePreference))
+    }
+
+    private func consumePendingPush() {
+        guard let data = UserDefaults.standard.data(forKey: pendingPushStorageKey) else { return }
+        // Rimuovi subito per evitare doppioni
+        UserDefaults.standard.removeObject(forKey: pendingPushStorageKey)
+        if let obj = try? JSONSerialization.jsonObject(with: data, options: []),
+           let dict = obj as? [AnyHashable: Any] {
+            DispatchQueue.main.async {
+                inbox.add(from: dict)
+            }
+        }
     }
 }
 
