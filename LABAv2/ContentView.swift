@@ -1353,6 +1353,7 @@ struct AnimatedPatternBackground: View {
 struct LoginView: View {
     @EnvironmentObject var vm: SessionVM
     @AppStorage("laba.usernameBase") private var storedUsername: String = ""
+
     @State private var userBase = ""
     @State private var password = ""
     @State private var showingInfo = false
@@ -1640,11 +1641,11 @@ struct AccessHelpSheet: View {
             List {
                 // Guida rapida
                 Section("Guida rapida") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Label("Usa l’email in formato nome.cognome@labafirenze.com", systemImage: "at")
-                        Label("Controlla maiuscole/minuscole della password", systemImage: "textformat")
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Accedi utilizzando nome.cognome", systemImage: "at")
+                        Label("Controlla maiuscole/minuscole", systemImage: "textformat")
                         Label("Evita spazi iniziali/finali nei campi", systemImage: "rectangle.and.pencil.and.ellipsis")
-                        Label("Se hai appena cambiato password, attendi qualche minuto e riprova", systemImage: "clock")
+                        Label("Hai appena cambiato password? Attendi un po'", systemImage: "clock")
                     }
                     .font(.subheadline)
                 }
@@ -1675,8 +1676,11 @@ struct AccessHelpSheet: View {
                     } label: {
                         HStack {
                             Label("Chiama Segreteria Didattica", systemImage: "phone.fill")
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .contentShape(Rectangle())
                     }
+                    .tint(.blue)
                     .buttonStyle(.plain)
 
                     Button {
@@ -1684,8 +1688,11 @@ struct AccessHelpSheet: View {
                     } label: {
                         HStack {
                             Label("Reparto IT", systemImage: "phone.fill")
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .contentShape(Rectangle())
                     }
+                    .tint(.blue)
                     .buttonStyle(.plain)
                 }
             }
@@ -2513,6 +2520,9 @@ struct ProfiloView: View {
     @State private var showPhotoPicker = false
     @State private var selectedItem: PhotosPickerItem? = nil
     @State private var profileImage: Image? = nil
+    @State private var isRefreshing: Bool = false
+    @State private var didJustRefresh: Bool = false
+    @State private var showLogoutConfirm: Bool = false
     @AppStorage("laba.usernameBase") private var usernameBase: String = ""
     @AppStorage("laba.notificationsEnabled") private var notificationsEnabled: Bool = false
     @AppStorage("laba.theme") private var themePreference: String = "system"
@@ -2527,7 +2537,56 @@ struct ProfiloView: View {
     }
 
     private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
+        // Verifica stato corrente, poi richiedi se necessario
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+                    DispatchQueue.main.async {
+                        if granted {
+                            #if canImport(UIKit)
+                            UIApplication.shared.registerForRemoteNotifications()
+                            #endif
+                            notificationsEnabled = true
+                        } else {
+                            notificationsEnabled = false
+                        }
+                    }
+                }
+            case .denied:
+                // Permesso negato a livello di sistema → ripristina toggle a OFF
+                DispatchQueue.main.async { notificationsEnabled = false }
+            case .authorized, .provisional, .ephemeral:
+                // Già autorizzato → assicurati che APNs sia registrato
+                DispatchQueue.main.async {
+                    #if canImport(UIKit)
+                    UIApplication.shared.registerForRemoteNotifications()
+                    #endif
+                    notificationsEnabled = true
+                }
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    @MainActor
+    private func refreshAll() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        // Re-run the full bootstrap (come allo startup) e poi ricarica notifiche esplicite
+        await vm.restoreSession()
+        await vm.loadNotifications()
+
+        // Feedback utente
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        didJustRefresh = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            didJustRefresh = false
+        }
     }
     
     var body: some View {
@@ -2540,7 +2599,7 @@ struct ProfiloView: View {
                                 if let img = (profileImage ?? avatarImage) {
                                     img.resizable().scaledToFill().frame(width: 56, height: 56).clipShape(Circle())
                                 } else {
-                                    Image(systemName: "person.crop.circle.fill").font(.system(size: 56)).foregroundStyle(colorScheme == .dark ? .white : Color.labaPrimary)
+                                    Image(systemName: "person.crop.circle.fill").font(.system(size: 56)).foregroundStyle(colorScheme == .dark ? .white : Color.labaAccent)
                                         .frame(width: 56, height: 56)
                                 }
                             }
@@ -2617,6 +2676,14 @@ struct ProfiloView: View {
                                 .foregroundColor(colorScheme == .dark ? .white : .primary) // testo: bianco in dark, default in light
                         }
                     }
+                    Link(destination: URL(string: "https://wa.me/393316392105")!) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "ellipsis.message.fill")
+                                .foregroundColor(Color(red: 37/255, green: 211/255, blue: 102/255)) // WhatsApp green
+                            Text("Scrivi su WhatsApp")
+                                .foregroundColor(Color(red: 37/255, green: 211/255, blue: 102/255)) // WhatsApp green
+                        }
+                    }
                     Link(destination: URL(string: "https://www.laba.biz")!) {
                         HStack(spacing: 8) {
                             Image(systemName: "globe")
@@ -2637,17 +2704,21 @@ struct ProfiloView: View {
                     Text("Link utili")
                 }
                 Section {
-                    // Ricarica dati — stile identico a "Link utili": icona + testo, entrambi blu LABA
+                    // Ricarica dati — mostra spinner durante refresh, disabilita durante refresh
                     Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        Task { await vm.restoreSession() }
+                        Task { await refreshAll() }
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "arrow.clockwise.circle.fill")
-                            Text("Ricarica dati")
+                            if isRefreshing {
+                                ProgressView().progressViewStyle(.circular)
+                            } else {
+                                Image(systemName: "arrow.clockwise.circle.fill")
+                            }
+                            Text(isRefreshing ? "Aggiorno…" : "Ricarica dati")
                         }
                         .foregroundColor(Color.labaAccent)
                     }
+                    .disabled(isRefreshing)
 
                     // Esci — rosso: icona + testo
                     Button(role: .destructive) {
@@ -2659,6 +2730,10 @@ struct ProfiloView: View {
                             Text("Esci")
                         }
                         .foregroundColor(.red)
+                    }
+                    .alert("Vuoi davvero uscire?", isPresented: $showLogoutConfirm) {
+                        Button("Annulla", role: .cancel) {}
+                        Button("Esci", role: .destructive) { vm.logout() }
                     }
                 }
             }
@@ -2683,11 +2758,42 @@ struct ProfiloView: View {
                 }
             }
             .onChange(of: notificationsEnabled) { _, newValue in
-                if newValue { requestNotificationPermission() }
+                if newValue {
+                    requestNotificationPermission()
+                } else {
+                    #if canImport(UIKit)
+                    UIApplication.shared.unregisterForRemoteNotifications()
+                    #endif
+                }
             }
             .onAppear {
                 if let ui = (!avatarData.isEmpty ? UIImage(data: avatarData) : nil) {
                     profileImage = Image(uiImage: ui)
+                }
+            }
+            .overlay(alignment: .center) {
+                if isRefreshing {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial)
+                        VStack(spacing: 10) {
+                            ProgressView("Aggiornamento in corso…")
+                            Text("Sincronizzo i dati dal server").font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .padding(16)
+                    }
+                    .frame(width: 260, height: 120)
+                } else if didJustRefresh {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial)
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("Dati aggiornati")
+                        }
+                        .font(.headline)
+                        .padding(12)
+                    }
+                    .frame(width: 200, height: 60)
+                    .transition(.opacity)
                 }
             }
         }
@@ -3065,6 +3171,143 @@ struct FAQView: View {
 }
 
 
+// MARK: - Calcolo Media (Ingresso Tesi)
+struct CalcolaMediaView: View {
+    @EnvironmentObject var vm: SessionVM
+    @State private var inputAvg: String = ""
+    @State private var rawScaled: Double? = nil
+    @State private var officialScaled: Int? = nil
+
+    private func suggestedAverageFromApp() -> Double? {
+        // Media aritmetica sui soli voti numerici, escludendo Attività/Tesi
+        let numeric: [Int] = vm.esami.compactMap { e in
+            let lowered = e.corso.lowercased()
+            if lowered.contains("attivit") || lowered.contains("tesi") { return nil }
+            guard let v = e.voto, !v.isEmpty else { return nil }
+            let cleaned = v.replacingOccurrences(of: " e lode", with: "")
+            let first = cleaned.components(separatedBy: "/").first ?? cleaned
+            return Int(first.trimmingCharacters(in: .whitespaces))
+        }
+        guard !numeric.isEmpty else { return nil }
+        let sum = numeric.reduce(0, +)
+        return Double(sum) / Double(numeric.count)
+    }
+
+    private func computeScaledTo110(from avg30: Double) -> (raw: Double, official: Int) {
+        // Scala /30 → /110
+        let x = avg30 * (110.0 / 30.0)
+        let frac = x - floor(x)
+        // Regola richiesta: se la parte decimale supera 0,50 → arrotonda per eccesso, altrimenti per difetto
+        let official: Int = (frac > 0.50) ? Int(ceil(x)) : Int(floor(x))
+        return (x, official)
+    }
+
+    var body: some View {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        TextField("Inserisci media su 30 (es. 26,8)", text: $inputAvg)
+                            .keyboardType(.decimalPad)
+                        Button("Calcola") {
+                            let cleaned = inputAvg.replacingOccurrences(of: ",", with: ".")
+                            if let v = Double(cleaned) {
+                                let out = computeScaledTo110(from: v)
+                                rawScaled = out.raw
+                                officialScaled = out.official
+                            } else {
+                                rawScaled = nil
+                                officialScaled = nil
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.capsule)
+
+                    }
+
+                    if let raw = rawScaled, let off = officialScaled {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Ti presenterai con")
+                                Spacer()
+                                Text("\(off)/110").font(.title2.weight(.semibold))
+                            }
+                            Text("Se l'eccedenza decimale del voto supera lo 0.50, si approssima per eccesso.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+            } header: {
+                Text("Con quanto mi presenterò?")
+            }
+
+            Section {
+                if let s = suggestedAverageFromApp() {
+                    Button {
+                        inputAvg = String(format: "%.1f", s)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "sparkles")
+                                Text("Utilizza la media proposta")
+                                Spacer()
+                                HStack(spacing: 6) {
+                                    Text(String(format: "%.1f", s))
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 34, height: 34)
+                                        .background(
+                                            Circle().fill(Color.labaAccent)
+                                        )
+                                }
+                            }
+                            Text("La media proposta dall'applicazione LABA tiene conto dei valori ufficiali, con un margine di errore minimo.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("Non è disponibile una media proposta. Inseriscila manualmente.")
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.fill.questionmark")
+                        Text("Come funziona il calcolo?")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                    }
+                    Group {
+                        Text("1) Vengono considerati tutti gli esami con voto numerico. “30 e lode” conta come 30/30.")
+                        Text("2) Idoneità, attività integrative e tirocini non entrano nel calcolo.")
+                        Text("3) Come viene calcolata la media generale: sommiamo i voti di tutti gli esami con voto registrato previsti dal tuo piano di studi e dividiamo per il numero di questi esami. (Gli esami senza voto non vengono conteggiati.)")
+                        Text("4) Da qui si ottiene il voto d’ingresso in tesi: convertiamo la media in /110 con media × 110 ÷ 30.")
+                        Text("5) Arrotondamento: se la parte decimale > 0,50 arrotondiamo in su, altrimenti in giù.")
+                        Text("Esempio: 28,8 × 110 ÷ 30 = 105,69 → ti presenterai con 106/110.")
+                            .monospaced()
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                    Text("Nota: per accedere alla tesi servono **tutti i CFA** e **tutti gli esami** completati; questo requisito non modifica la media.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Suggerimenti")
+            }
+        }
+        .navigationTitle("Voto d'Ingresso")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+
 struct HomeView: View {
     @EnvironmentObject var vm: SessionVM
     // Kick a one-time refresh to ensure announcements are fetched (old Home did this explicitly)
@@ -3405,13 +3648,31 @@ struct HomeView: View {
                     .shadow(color: Color.labaAccent.opacity(0.08), radius: 6, x: 0, y: 2)
                     .padding(.horizontal)
 
-                    // PER TE
+                    // PER TE — Scorciatoie
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Per te (in costruzione)").font(.headline)
-                        VStack(spacing: 12) {
-                            perTeRow(icon: "🧮", text: "Calcola la media")
-                            perTeRow(icon: "📷", text: "Prenota strumentazione")
-                            perTeRow(icon: "🏛", text: "Prenota aule")
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkles")
+                            Text("Per te").font(.headline)
+                            Spacer()
+                        }
+                        VStack(spacing: 0) {
+                            // Row 1 — attivo
+                            NavigationLink {
+                                CalcolaMediaView().environmentObject(vm)
+                            } label: {
+                                perTeSystemRow(icon: "plusminus.circle.fill", title: "Voto d’ingresso")
+                            }
+                            .buttonStyle(.plain)
+
+                            Divider().padding(.leading, 44)
+
+                            // Row 2 — placeholder disabilitato
+                            perTeSystemRow(icon: "camera.circle.fill", title: "Strumentazione", enabled: false)
+
+                            Divider().padding(.leading, 44)
+
+                            // Row 3 — placeholder disabilitato
+                            perTeSystemRow(icon: "inset.filled.rectangle.and.person.filled.circle.fill", title: "Aule", enabled: false)
                         }
                     }
                     .padding()
@@ -3678,6 +3939,62 @@ struct HomeView: View {
                 .fill(Color.labaAccent.opacity(0.13))
                 .shadow(color: Color.labaAccent.opacity(0.11), radius: 3, x: 0, y: 1)
         )
+    }
+
+    @ViewBuilder
+    private func perTeQuickItem(icon: String, title: String, disabled: Bool = false) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.title2)
+                .frame(width: 34, height: 34)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.labaAccent.opacity(0.15))
+                )
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity)
+            if disabled {
+                Text("Prossimamente")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func perTeSystemRow(icon: String, title: String, enabled: Bool = true) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.headline)
+                .frame(width: 28, height: 28)
+                .foregroundStyle(.primary)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Spacer()
+            if enabled {
+                Image(systemName: "chevron.right")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 4)
+        .opacity(enabled ? 1.0 : 0.55)
+        .contentShape(Rectangle())
     }
 
     // Media ARITMETICA sui soli voti numerici (escluse idoneità, Attività, Tesi)
