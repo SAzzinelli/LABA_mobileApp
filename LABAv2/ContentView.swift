@@ -1730,7 +1730,7 @@ struct NotificheView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Notifiche")
+        .navigationTitle("Avvisi")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -1923,9 +1923,11 @@ struct ExamsView: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
+            .scrollContentBackground(.hidden)
             .navigationTitle("Esami")
             .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $queryRaw, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Cerca esami")
+            .searchable(text: $queryRaw, placement: .navigationBarDrawer(displayMode: .always), prompt: "Cerca esami")
+            .searchPresentationToolbarBehavior(.avoidHidingContent)
             .onChange(of: queryRaw) { _, newValue in
                 debounceItem?.cancel()
                 let w = DispatchWorkItem {
@@ -1957,6 +1959,7 @@ struct ExamsView: View {
             .animation(nil, value: statusFilter)
             .animation(nil, value: selectedYear)
             .animation(nil, value: query)
+            .background(Color(uiColor: .systemGroupedBackground))
         }
     }
 }
@@ -2183,9 +2186,11 @@ struct CorsiView: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
+            .scrollContentBackground(.hidden)
             .navigationTitle("Corsi")
             .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Cerca corsi")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Cerca corsi")
+            .searchPresentationToolbarBehavior(.avoidHidingContent)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -2201,6 +2206,7 @@ struct CorsiView: View {
                     }
                 }
             }
+            .background(Color(uiColor: .systemGroupedBackground))
         }
     }
 }
@@ -2340,9 +2346,12 @@ struct SeminariView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
             .navigationTitle("Seminari")
             .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Cerca seminari")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Cerca seminari")
+            .searchPresentationToolbarBehavior(.avoidHidingContent)
+            .background(Color(uiColor: .systemGroupedBackground))
         }
     }
 }
@@ -3025,6 +3034,8 @@ struct FAQView: View {
 
 struct HomeView: View {
     @EnvironmentObject var vm: SessionVM
+    // Kick a one-time refresh to ensure announcements are fetched (old Home did this explicitly)
+    @State private var didKickAnnouncementsFetch = false
 
     // MARK: - Helpers (nuove regole LABA)
     private func isAttivitaOTesi(_ e: Esame) -> Bool {
@@ -3114,6 +3125,37 @@ struct HomeView: View {
         let tot = cfaTarget
         guard tot > 0 else { return 0 }
         return Double(cfaEarned) / Double(tot)
+    }
+
+    /// Avanzamento per ANNO CORRENTE: (anno, sostenuti, totali, percentuale)
+    private var yearProgress: (year: Int, passed: Int, total: Int, percent: Double)? {
+        guard let y = vm.currentYear else { return nil }
+        let examsYear = vm.esami.filter { !isAttivitaOTesi($0) && $0.anno == y }
+        let total = examsYear.count
+        let passed = examsYear.filter { !(($0.voto ?? "").isEmpty) }.count
+        let percent = total > 0 ? Double(passed) / Double(total) : 0
+        return (y, passed, total, percent)
+    }
+
+    // Statistiche per anno: restituisce sostenuti, totali, mancanti e percentuale di completamento (1 - missing/total)
+    private func statsForYear(_ y: Int) -> (passed: Int, total: Int, missing: Int, percent: Double) {
+        let exams = vm.esami.filter { !isAttivitaOTesi($0) && $0.anno == y }
+        let total = exams.count
+        let passed = exams.filter { !(($0.voto ?? "").isEmpty) }.count
+        let missing = max(0, total - passed)
+        let percent = total > 0 ? 1.0 - (Double(missing) / Double(total)) : 0
+        return (passed, total, missing, percent)
+    }
+
+    /// Media aritmetica sui soli voti numerici (0..30). Nil se assente
+    private var careerAverageValue: Double? {
+        let numeric = vm.esami.filter { !isAttivitaOTesi($0) && hasNumericVote($0) }
+        let marks: [Int] = numeric.compactMap { e in
+            let raw = (e.voto ?? "").replacingOccurrences(of: " e lode", with: "")
+            return Int(raw.components(separatedBy: "/").first ?? "")
+        }
+        guard !marks.isEmpty else { return nil }
+        return Double(marks.reduce(0, +)) / Double(marks.count)
     }
 
     // Schiarisce leggermente il colore d'accento per la pill in Hero
@@ -3225,55 +3267,93 @@ struct HomeView: View {
 
                     // KPI – testo nero; glow su "mancanti"
                     HStack(spacing: 16) {
-                        kpiCard(title: "Esami sostenuti",
+                        kpiCard(title: "Esami\nsostenuti",
                                 value: "\(passedExamsCount)",
                                 emphasizeGlow: false)
-                        kpiCard(title: "Esami mancanti",
+                        kpiCard(title: "Esami\nmancanti",
                                 value: "\(missingExamsCount)",
                                 emphasizeGlow: true)
-                        kpiCard(title: "Media di carriera",
-                                value: careerAverage(),
+                        kpiCard(title: "CFA \nacquisiti",
+                                value: "\(cfaEarned)",
                                 emphasizeGlow: false)
                     }
                     .padding(.horizontal)
 
-                    // CFA – titolo bold, percentuale nera
-                    VStack(alignment: .leading, spacing: 8) {
+                    // Riepilogo anno corrente + Media totale
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Avanzamento per anno (1º, 2º, 3º) — layout in 3 colonne
+                        Text("Come stai andando?").font(.subheadline.weight(.bold))
+                        HStack(spacing: 12) {
+                            ForEach([1, 2, 3], id: \.self) { y in
+                                let s = statsForYear(y)
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Esami \(italianOrdinalYear(y))")
+                                        .font(.footnote.weight(.semibold))
+                                    ProgressView(value: s.total > 0 ? s.percent : 0)
+                                        .tint(.labaAccent)
+                                        .frame(height: 10)
+                                        .clipShape(Capsule())
+                                    Text(s.total > 0 ? "mancanti \(s.missing)" : "—")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        Divider().padding(.vertical, 4)
+
+                        // Media totale
                         HStack {
-                            Text("Avanzamento CFA").font(.subheadline.weight(.bold))
+                            Text("La tua media").font(.subheadline.weight(.bold))
                             Spacer()
-                            Text(cfaTarget > 0 ? String(format: "%.0f%%", cfaPercent * 100) : "—")
+                            Text(careerAverageValue != nil ? String(format: "%.1f/30", careerAverageValue!) : "—")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(.primary)
                         }
-                        ProgressView(value: cfaPercent)
+                        ProgressView(value: careerAverageValue != nil ? min(1.0, max(0.0, (careerAverageValue!/30.0))) : 0)
                             .tint(.labaAccent)
                             .frame(height: 15)
                             .clipShape(Capsule())
-                        Text("\(cfaEarned) / \(cfaTarget) CFA")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                     }
                     .padding()
                     .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemGroupedBackground)))
                     .shadow(color: Color.labaAccent.opacity(0.08), radius: 6, x: 0, y: 2)
                     .padding(.horizontal)
 
-                    // AVVISI – full width, icona sinistra
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "megaphone.fill")
-                            Text("Avvisi").font(.headline)
+                    // AVVISI – mostra le prime 2 e apre la lista completa (usa API via vm.notifications)
+                    NavigationLink {
+                        NotificheView().environmentObject(vm)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "megaphone.fill")
+                                Text("Avvisi").font(.headline)
+                                Spacer()
+                                if !vm.notifications.isEmpty { Text("Vedi tutti").font(.footnote).foregroundStyle(.secondary) }
+                            }
+                            .foregroundStyle(.primary)
+
+                            if vm.notifications.isEmpty {
+                                Text("Nessun avviso disponibile.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ForEach(Array(vm.notifications.prefix(2)), id: \.id) { n in
+                                        Text((n.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? n.title! : n.message))
+                                            .font(.subheadline)
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(2)
+                                    }
+                                }
+                            }
                         }
-                        .foregroundStyle(.primary)
-                        Text("Nessun avviso disponibile.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemGroupedBackground)))
+                        .shadow(color: Color.labaAccent.opacity(0.08), radius: 6, x: 0, y: 2)
                     }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemGroupedBackground)))
-                    .shadow(color: Color.labaAccent.opacity(0.08), radius: 6, x: 0, y: 2)
+                    .buttonStyle(.plain)
                     .padding(.horizontal)
 
                     // PROSSIME LEZIONI – full width, icona sinistra
@@ -3318,6 +3398,12 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.automatic, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
+        .task {
+            if !didKickAnnouncementsFetch {
+                didKickAnnouncementsFetch = true
+                await vm.loadNotifications()
+            }
+        }
     }
 
     // MARK: - Hero Gradient Helper
@@ -3352,11 +3438,11 @@ struct HomeView: View {
             let m = esamiMancanti
             if m <= 0 { return 0.06 }
             switch m {
-            case 1: return 0.46
-            case 2: return 0.40
-            case 3: return 0.34
-            case 4: return 0.28
-            case 5: return 0.22
+            case 1: return 0.50
+            case 2: return 0.44
+            case 3: return 0.38
+            case 4: return 0.31
+            case 5: return 0.24
             default: return 0.06
             }
         }()
@@ -3386,12 +3472,13 @@ struct HomeView: View {
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.95))
                 } else {
-                    Text(title)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                     Text(value)
                         .font(.title2).bold()
                         .foregroundColor(.primary)
+                    Text(title)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
                 }
             }
             .multilineTextAlignment(.center)
@@ -3503,24 +3590,43 @@ struct HomeView: View {
             .accessibilityLabel("Tutti gli esami sono stati sostenuti")
         }
     }
-    // Glow molto aderente ai bordi (tighter edge glow)
+    // Glow molto aderente ai bordi (tighter edge glow) con effetto pulse di opacità
     fileprivate struct TightGlow: View {
         let active: Bool
         let color: Color
         let corner: CGFloat
+        @State private var phase: Bool = false
+
         var body: some View {
             ZStack {
-                // Anello molto vicino al bordo esterno
+                // Anello molto vicino al bordo esterno (softened version)
                 RoundedRectangle(cornerRadius: corner)
-                    .stroke(color.opacity(active ? 0.60 : 0.0), lineWidth: 5)
-                    .blur(radius: active ? 4 : 0)
-                    .padding(-3) // spinge il glow appena fuori
+                    .stroke(color.opacity(active ? 0.48 : 0.0), lineWidth: 5)
+                    .blur(radius: active ? 6 : 0)
+                    .padding(-4)
                     .allowsHitTesting(false)
-                // Bordo interno luminoso sottile
+                // Bordo interno luminoso sottile (più definito ma ancora morbido)
                 RoundedRectangle(cornerRadius: corner)
-                    .stroke(color.opacity(active ? 0.35 : 0.0), lineWidth: 2)
+                    .stroke(color.opacity(active ? 0.42 : 0.0), lineWidth: 2.5)
                     .blur(radius: active ? 1.2 : 0)
                     .allowsHitTesting(false)
+            }
+            // Pulse dall'aspetto attuale → scomparsa → aspetto attuale (loop)
+            .opacity(active ? (phase ? 1.0 : 0.0) : 0.0)
+            .onAppear {
+                guard active else { return }
+                withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                    phase.toggle()
+                }
+            }
+            .onChange(of: active) { _, newVal in
+                if newVal {
+                    withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                        phase = true
+                    }
+                } else {
+                    phase = false
+                }
             }
         }
     }
@@ -3627,8 +3733,8 @@ fileprivate struct AnimatedGradientBackground: View {
                         let py = 0.5 + 0.42 * cos( (t * 0.15) + Double(sy) / 41.0 + Double(i) )
 
                         // Radius scales with view size + intensity
-                        let baseR = minSide * (0.18 + 0.10 * CGFloat(i % 3))
-                        let r = baseR * (0.85 + 0.5 * factor)
+                        let baseR = minSide * (0.20 + 0.10 * CGFloat(i % 3))
+                        let r = baseR * (0.92 + 55 * factor)
 
                         let center = CGPoint(x: px * size.width, y: py * size.height)
                         let grad = Gradient(colors: [
@@ -3794,6 +3900,5 @@ struct ContentView: View {
 }
 
 
-struct ContentView_Previews: PreviewProvider { static var previews: some View { ContentView() } }
- 
 
+struct ContentView_Previews: PreviewProvider { static var previews: some View { ContentView() } }
